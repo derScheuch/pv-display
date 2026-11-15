@@ -1,0 +1,24 @@
+# systemd service for the Huawei PV logger.
+# Adjust USER and the paths below to your installation, then:
+#   sudo cp huawei-logger.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now huawei-logger
+
+[Unit]
+Description=Huawei PV Modbus logger
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/huawei-logger
+# Optional: append  --ntfy-topic <your-topic>  for the "unplug the car" push reminder,
+#           --host <dongle-ip>  if your SDongle is not at 192.168.178.65
+ExecStart=/home/pi/huawei-logger/venv/bin/python /home/pi/huawei-logger/huawei_logger.py --dir /home/pi/huawei-logger/log
+Restart=always
+RestartSec=30
+# lower CPU priority so other services on the Pi (e.g. BirdNET) are not slowed down
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

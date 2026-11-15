@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Logger output (measurement data stays local)
+log/
+*.csv
+zustand.json
+
+# macOS / editors
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Arduino / PlatformIO build output
+build/
+.pio/
