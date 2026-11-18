@@ -67,5 +67,13 @@ Three different "PV yield" figures, example from one day:
 * Grid import and export agree between the logger and the app (± rounding), so the meter side is consistent.
 * The app's "consumption" is derived from its PV yield, so it is lower by the same amount.
 
-Open question: whether frequent Modbus polling keeps the system from entering a lower-power state at night.
-Compare the app's "from grid − consumed by devices" with and without the logger running.
+**Does the Modbus polling cause it? No.** Test: app's "from grid − consumed by devices" at night.
+
+| Night | Logger | Grid − devices | Average |
+|---|---|---|---|
+| Sunday, 00:00–09:19 | running (20 s) | 0.40 kWh | ≈ 43 W |
+| Monday, 00:00–08:44 | **stopped** | 0.81 kWh | ≈ 93 W |
+
+Without the logger the difference was even larger. It varies with the battery state rather than with polling:
+on Monday the battery was empty all night (5 % → 7 %), so part of the grid import went into keeping the
+battery at its minimum charge (≈ 0.1 kWh plus losses), and the battery's electronics stay awake.

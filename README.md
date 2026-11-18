@@ -25,13 +25,14 @@ Data is read locally via Modbus TCP from the Huawei SDongle – no cloud require
 * **`firmware/`** – Arduino sketch for a Seeed XIAO ESP32-S3 with a 1.77"/1.8" ST7735 TFT. Fetches the JSON
   from the logger and draws an animated energy-flow diagram. Wi-Fi and logger URL are configured via a
   captive portal – no credentials in the code.
-* **`enclosure/`** – Parametric OpenSCAD wall enclosure (front, lid, quick test bezel) plus ready-made STLs.
+* **`enclosure/`** – Parametric OpenSCAD wall enclosure (front, lid with snap-in XIAO holder, quick test prints) plus ready-made STLs.
 * **`docs/`** – Modbus registers, findings about the yield values, images.
 
 ## Features
 
 * Live energy flows: PV → house / battery / grid, battery → house / grid, grid → house
-* PV power, east/west split of the two strings, battery state of charge
+* PV power, east/west split of the two strings, battery state of charge (battery circle fills up)
+* Where the house gets its power from right now: label (`Nur PV`, `PV+Akku+Netz`, `PV satt`, …) and a PV / battery / grid bar
 * Daily totals: PV yield, house consumption, grid import, grid export
 * Stale-data handling on the display: red frame after 60 s, values hidden after 120 s
 * Push reminder via [ntfy](https://ntfy.sh) when the car is (probably) charging from the home battery after sunset

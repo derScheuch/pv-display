@@ -78,8 +78,13 @@ Settings at the top of `pv_display.ino`: `DREHUNG` (1 or 3 to rotate by 180°), 
 
 * **Circles:** PV (top), battery with state of charge (left), grid (right, `Netz +` = export, `Netz -` = import),
   house (bottom). Inactive circles are dimmed.
+  The battery circle is filled up to the state of charge (dark red below 15 %).
 * **Lanes:** dots move from source to destination; color = source (yellow PV, green battery, red grid);
   speed grows with power.
+* **Bottom right:** where the house gets its power from right now – the sources as colored words
+  (`Nur PV`, `PV+Akku`, `PV+Akku+Netz`, `Akku+Netz`, `Nur Netz`, …, wrapped onto two lines if needed) and a bar with
+  the PV / battery / grid share (yellow / green / red). `PV satt`: the house runs on PV and power is still going
+  to the grid – good time for big loads. Powers below 5 W (`MIN_W`) are ignored everywhere on the display.
 * **Top corners:** west / east string share. **Bottom left:** today's yield (yellow), house consumption (blue),
   grid import (red), grid export (orange). **Bottom right:** time of the values.
 * **Red frame:** values older than 60 s (animation stops). **Empty circles:** older than 120 s.

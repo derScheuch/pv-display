@@ -45,6 +45,11 @@ const int WEG_S     = 120;    // older data: hide the values in the circles (dai
 #define C_BAHN    0x2945          // dark grey: lane without flow
 #define C_GRAU    0x8410
 #define C_EINSP   0xFD20          // orange
+#define C_FUELL   0x0260          // dark green: battery fill
+#define C_FUELL_LEER 0x5000       // dark red: battery fill when almost empty
+const int SOC_LEER = 15;          // below this state of charge the fill turns red
+const int MIN_W = 5;              // powers and flows below this are shown as 0 (no lane, circle dimmed)
+const int QUELLE_MIN_W = 5;       // a source counts for the label at this power or more (raise if it flickers)
 
 TFT_eSPI tft = TFT_eSPI();
 
@@ -60,6 +65,12 @@ struct PVData {
   String uhrzeit = "";
 };
 PVData pv;
+
+struct Teil { const char* text; uint16_t farbe; };   // text piece with its own color
+
+// declared here so the default arguments are known everywhere (Arduino generates prototypes itself otherwise)
+void kreis(int x, int y, uint16_t farbe, const String& oben, const String& unten, bool aktiv,
+           int fuell = -1, uint16_t fuellFarbe = 0);
 
 // ---------------------------------------------------------------- geometry
 // circles
@@ -160,15 +171,85 @@ String kurz(int w) {                        // 590W / 1,2kW
   return s;
 }
 
-void kreis(int x, int y, uint16_t farbe, const String& oben, const String& unten, bool aktiv) {
+// fuell = 0..100: fill the circle from the bottom (battery state of charge), -1 = no fill
+void kreis(int x, int y, uint16_t farbe, const String& oben, const String& unten, bool aktiv,
+           int fuell, uint16_t fuellFarbe) {
   tft.fillCircle(x, y, R, TFT_BLACK);
+  if (fuell >= 0) {
+    int ri = R - 2;                                        // inside the 2 px outline
+    int oberkante = y + ri - (2 * ri * constrain(fuell, 0, 100) + 50) / 100;
+    for (int yy = oberkante; yy <= y + ri; ++yy) {
+      int h = (int)sqrt((float)(ri * ri - (yy - y) * (yy - y)));
+      tft.drawFastHLine(x - h, yy, 2 * h + 1, fuellFarbe);
+    }
+  }
   tft.drawCircle(x, y, R, aktiv ? farbe : gedimmt(farbe));
   tft.drawCircle(x, y, R - 1, aktiv ? farbe : gedimmt(farbe));
   tft.setTextDatum(MC_DATUM);
-  tft.setTextColor(aktiv ? farbe : C_GRAU, TFT_BLACK);
+  // with a fill the text is drawn transparently (no black box), otherwise on black
+  uint16_t c1 = fuell >= 0 ? C_TEXT : (aktiv ? farbe : C_GRAU);
+  uint16_t c2 = aktiv || fuell >= 0 ? C_TEXT : C_GRAU;
+  if (fuell >= 0) tft.setTextColor(c1); else tft.setTextColor(c1, TFT_BLACK);
   tft.drawString(oben, x, unten.length() ? y - 9 : y, 1);   // small label (centered if there is no value)
-  tft.setTextColor(aktiv ? C_TEXT : C_GRAU, TFT_BLACK);
+  if (fuell >= 0) tft.setTextColor(c2); else tft.setTextColor(c2, TFT_BLACK);
   tft.drawString(unten, x, y + 5, 2);         // large value (font 2, 16 px)
+}
+
+// ---------------------------------------------------------------- where the house gets its power from
+// Bottom right: the sources currently feeding the house as colored words ("Nur PV", "PV+Akku",
+// "PV+Akku+Netz", "Akku+Netz", "Nur Netz", ..., or "PV satt"), wrapped onto two lines if needed,
+// and below them a bar showing the mix PV / battery / grid of the current house consumption.
+const int QB_X = 108, QB_B = 49;            // bar: x and width (right edge at 157)
+const int QB_Y = 109, QB_H = 5;
+const int QB_ZEILE1 = 90, QB_ZEILE2 = 99;   // text lines above the bar
+const int QB_TEXT_B = 51;                   // max. text width per line (house circle on the left)
+
+// colored words, right-aligned at x = 157, wrapped onto a second line if they do not fit
+void bunteZeilen(const Teil* teile, int n) {
+  int breite[2] = {0, 0}, ende1 = n;            // ende1 = first part on line 2
+  for (int i = 0; i < n; ++i) {
+    int w = tft.textWidth(teile[i].text, 1);
+    if (ende1 == n && breite[0] + w > QB_TEXT_B) ende1 = i;
+    breite[ende1 == n ? 0 : 1] += w;
+  }
+  bool zweiZeilen = ende1 < n;
+  tft.setTextDatum(TL_DATUM);
+  int xx = 157 - breite[0], y = zweiZeilen ? QB_ZEILE1 : QB_ZEILE2;   // one line: directly above the bar
+  for (int i = 0; i < n; ++i) {
+    if (i == ende1) { xx = 157 - breite[1]; y = QB_ZEILE2; }
+    tft.setTextColor(teile[i].farbe, TFT_BLACK);
+    tft.drawString(teile[i].text, xx, y, 1);
+    xx += tft.textWidth(teile[i].text, 1);
+  }
+}
+
+void zeigeQuelle() {
+  int p = pv.pvHaus, a = pv.akkuHaus, n = pv.netzHaus;
+  int summe = p + a + n;
+  if (summe < MIN_W) return;
+  bool pS = p >= QUELLE_MIN_W, aS = a >= QUELLE_MIN_W, nS = n >= QUELLE_MIN_W;
+  int anzahl = pS + aS + nS;
+
+  Teil t[6];
+  int k = 0;
+  if (anzahl == 1) t[k++] = {"Nur ", C_TEXT};
+  if (pS && anzahl == 1 && pv.pvNetz >= 100) {   // house runs on PV and there is still power left for the grid
+    t[0] = {"PV satt", C_EINSP}; k = 1;
+  } else {
+    if (pS) { t[k++] = {"PV", C_PV}; }
+    if (aS) { if (pS) t[k++] = {"+", C_TEXT}; t[k++] = {"Akku", C_AKKU}; }
+    if (nS) { if (pS || aS) t[k++] = {"+", C_TEXT}; t[k++] = {"Netz", C_NETZ}; }
+  }
+  if (k) bunteZeilen(t, k);
+
+  // bar: PV yellow, battery green, grid red, proportional to the shares
+  int bp = (p * QB_B + summe / 2) / summe;
+  int ba = (a * QB_B + summe / 2) / summe;
+  if (bp + ba > QB_B) ba = QB_B - bp;
+  int bn = QB_B - bp - ba;
+  if (bp) tft.fillRect(QB_X,           QB_Y, bp, QB_H, C_PV);
+  if (ba) tft.fillRect(QB_X + bp,      QB_Y, ba, QB_H, C_AKKU);
+  if (bn) tft.fillRect(QB_X + bp + ba, QB_Y, bn, QB_H, C_NETZ);
 }
 
 // ---------------------------------------------------------------- screens
@@ -188,17 +269,19 @@ void zeigeFluss(bool aktuell, bool mitWerten) {
 
   if (mitWerten) {
     int akku = pv.akkuHaus + pv.akkuNetz + pv.pvAkku;
-    String netzText = pv.netz > 5 ? "Netz +" : pv.netz < -5 ? "Netz -" : "Netz";
-    kreis(PV_X, PV_Y, C_PV,   "PV",                 kurz(pv.pv),        pv.pv > 10);
-    kreis(AK_X, AK_Y, C_AKKU, String(pv.soc) + "%", kurz(akku),         akku > 10);
-    kreis(NE_X, NE_Y, C_NETZ, netzText,             kurz(pv.netz),      abs(pv.netz) > 10);
-    kreis(HA_X, HA_Y, C_HAUS, "Haus",               kurz(pv.verbrauch), pv.verbrauch > 10);
+    String netzText = pv.netz > 0 ? "Netz +" : pv.netz < 0 ? "Netz -" : "Netz";
+    kreis(PV_X, PV_Y, C_PV,   "PV",                 kurz(pv.pv),        pv.pv > 0);
+    kreis(AK_X, AK_Y, C_AKKU, String(pv.soc) + "%", kurz(akku),         akku > 0,
+          pv.soc, pv.soc < SOC_LEER ? C_FUELL_LEER : C_FUELL);     // filled up to the state of charge
+    kreis(NE_X, NE_Y, C_NETZ, netzText,             kurz(pv.netz),      pv.netz != 0);
+    kreis(HA_X, HA_Y, C_HAUS, "Haus",               kurz(pv.verbrauch), pv.verbrauch > 0);
 
     tft.setTextColor(C_GRAU, TFT_BLACK);       // top: like on a map, west left, east right
     if (pv.ostProz >= 0) {
       tft.setTextDatum(TL_DATUM); tft.drawString("West " + String(pv.westProz) + "%", 3, 3, 1);
       tft.setTextDatum(TR_DATUM); tft.drawString("Ost " + String(pv.ostProz) + "%", 157, 3, 1);
     }
+    zeigeQuelle();
   } else {                                     // too old: empty circles only
     kreis(PV_X, PV_Y, C_PV,   "PV",   "", false);
     kreis(AK_X, AK_Y, C_AKKU, "Akku", "", false);
@@ -487,6 +570,11 @@ bool getStatus() {
   pv.einspHeute     = h["einspeisung"].isNull() ? -1 : h["einspeisung"].as<float>();
   pv.warnungAuto = doc["warnung_auto"] | false;
   pv.uhrzeit     = String(doc["uhrzeit"] | "");
+
+  // ignore tiny powers (measurement noise): below MIN_W counts as 0
+  int* werte[] = {&pv.pv, &pv.verbrauch, &pv.netz, &pv.pvHaus, &pv.pvAkku, &pv.pvNetz,
+                  &pv.akkuHaus, &pv.akkuNetz, &pv.netzHaus};
+  for (int* w : werte) if (abs(*w) < MIN_W) *w = 0;
 
 #if DEBUG
   Serial.printf("PV %d W | Haus %d W | Netz %d W | Akku %d %% | PV>H %d PV>A %d PV>N %d A>H %d A>N %d N>H %d\n",
