@@ -4,6 +4,8 @@ A small wall display that shows, in real time, where the energy of a Huawei sola
 from the PV modules to the house, the battery and the grid, from the battery to the house, and from the grid to the house.
 Data is read locally via Modbus TCP from the Huawei SDongle – no cloud required.
 
+![Display layout](docs/images/device.jpg)
+
 ![Display layout](docs/images/display_layout.png)
 
 ## How it works
